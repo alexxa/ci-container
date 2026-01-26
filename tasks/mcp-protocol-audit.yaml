@@ -1,0 +1,36 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: mcp-protocol-audit
+spec:
+  description: Audits the MCP server for protocol compliance.
+  params:
+    - name: image_url
+      type: string
+      description: The URL of the image to audit.
+    - name: qa_image_url
+      type: string
+      default: "quay.io/rhel_lightspeed/ci:latest"
+
+  sidecars:
+    - name: mcp-server
+      image: $(params.image_url)
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          socat TCP-LISTEN:8080,reuseaddr,fork EXEC:linux-mcp-server,stderr
+
+  steps:
+    - name: validate-protocol
+      image: $(params.qa_image_url)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Adding a 5-second sleep to allow sidecar socat to bind to 8080
+        echo "Waiting for sidecar..."
+        sleep 5
+
+        # Scripts are in /usr/local/bin via Containerfile
+        mcp_protocol_audit.sh
+        verify_stdout_hygiene.sh

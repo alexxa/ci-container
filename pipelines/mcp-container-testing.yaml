@@ -1,0 +1,46 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: mcp-container-testing
+spec:
+  params:
+    - name: SNAPSHOT
+      type: string
+      description: The JSON snapshot containing the built images
+      default: '{"components": [{"containerImage": "quay.io/example/fallback:latest"}]}'
+
+    - name: URL
+      type: string
+      description: URL of the Git repository use for fetching the tasks
+      default: https://github.com/alexxa/ci-container
+    
+    - name: REVISION
+      type: string
+      description: Git commit revision to use for fetching the tasks
+      default: main
+
+    - name: ci_image
+      type: string
+      description: Container image used for tasks
+      default: quay.io/rhel_lightspeed/ci:latest
+
+  tasks:
+    - name: mcp-protocol-audit
+      params:
+        - name: qa_image_url
+          value: "$(params.ci_image)"
+
+        - name: image_url
+          value: "$(params.SNAPSHOT)"
+
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: "$(params.URL)"
+
+          - name: revision
+            value: "$(params.REVISION)"
+
+          - name: pathInRepo
+            value: tasks/mcp-protocol-audit.yaml

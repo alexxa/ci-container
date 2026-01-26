@@ -34,6 +34,9 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: false
           push: ${{ github.event_name != 'pull_request' }}
+          username: ${{ secrets.QUAY_USER }}
+          password: ${{ secrets.QUAY_TOKEN }}
           tags: |
-            quay.io/rhel_lightspeed/ci:latest
-            quay.io/rhel_lightspeed/ci:${{ github.ref_name }}
+            quay.io/igulina/ci:latest
+            quay.io/igulina/ci:${{ github.ref_name }}
+

@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: mcp-protocol-audit
+spec:
+  params:
+    - name: image_url
+      type: string
+    - name: qa_image_url
+      type: string
+
+  sidecars:
+    - name: mcp-server
+      image: $(params.image_url)
+      imagePullPolicy: Always
+      command:
+        - /usr/bin/socat
+        - TCP-LISTEN:8080,reuseaddr,fork
+        - EXEC:linux-mcp-server,stderr
+
+  steps:
+    - name: validate-protocol
+      image: $(params.qa_image_url)
+      imagePullPolicy: Always
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        echo "Waiting for MCP server..."
+        # Wait for the sidecar to be ready
+        if ! timeout 60s bash -c 'until nc -z localhost 8080; do sleep 2; done'; then
+          echo "❌ ERROR: MCP server failed to start within 60 seconds."
+          exit 1
+        fi
+        echo "✅ Server is up."
+
+        mcp_protocol_audit.sh
+        verify_stdout_hygiene.sh

@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: mcp-container-testing
+spec:
+  params:
+    - name: SNAPSHOT
+      type: string
+      description: The JSON snapshot containing the built images
+      default: '{"components": [{"containerImage": "quay.io/example/fallback:latest"}]}'
+
+    - name: URL
+      type: string
+      description: URL of the Git repository use for fetching the tasks
+      default: https://github.com/alexxa/ci-container
+
+    - name: REVISION
+      type: string
+      description: Git commit revision to use for fetching the tasks
+      default: main
+
+    - name: ci_image
+      type: string
+      description: Container image used for tasks
+      default: quay.io/igulina/ci:latest
+
+  tasks:
+    - name: extract-server-image
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+      taskSpec:
+        params:
+          - name: SNAPSHOT
+            type: string
+        results:
+          - name: clean_url
+            description: The extracted quay.io URL
+        steps:
+          - name: extract
+            image: quay.io/igulina/ci:latest
+            script: |
+              #!/usr/bin/env bash
+              # Use a Here-Doc to avoid quote nesting issues
+              cat << 'EOF' | jq -r '.components[0].containerImage' | tr -d '\n' > $(results.clean_url.path)
+              $(params.SNAPSHOT)
+              EOF
+
+              # Debugging: show what we found in the logs
+              echo "Extracted Image: $(cat $(results.clean_url.path))"
+
+    - name: mcp-protocol-audit
+      runAfter: [extract-server-image]
+      params:
+        - name: qa_image_url
+          value: "$(params.ci_image)"
+
+        - name: image_url
+          value: "$(tasks.extract-server-image.results.clean_url)"
+
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: "$(params.URL)"
+
+          - name: revision
+            value: "$(params.REVISION)"
+
+          - name: pathInRepo
+            value: tasks/mcp-protocol-audit.yaml

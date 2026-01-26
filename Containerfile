@@ -7,6 +7,7 @@ RUN microdnf -y --nodocs install \
         jq \
         nc \
         podman \
+        socat \
     && microdnf clean all
 
 ADD files/bin /usr/local/bin

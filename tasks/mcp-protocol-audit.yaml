@@ -1,0 +1,70 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: mcp-protocol-audit
+spec:
+  params:
+    - name: image_url
+      type: string
+    - name: qa_image_url
+      type: string
+
+  volumes:
+    - name: mcp-pipe
+      emptyDir: {}
+
+  sidecars:
+    - name: mcp-server
+      image: $(params.image_url)
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: mcp-pipe
+          mountPath: /tmp/mcp
+      env:
+        - name: SSH_USER
+          value: "mcp"
+        - name: SSH_PORT
+          value: "22"
+        - name: SSH_KEY_FILE
+          value: "/var/lib/mcp/.ssh/id_rsa"
+        - name: LINUX_MCP_LOG_LEVEL
+          value: "DEBUG" 
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # 1. Setup pipes with wide permissions
+          rm -f /tmp/mcp/in /tmp/mcp/out
+          mkfifo /tmp/mcp/in /tmp/mcp/out
+          chmod 666 /tmp/mcp/in /tmp/mcp/out
+
+          mkdir -p ~/.ssh
+          ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+ 
+          # 2. Keep the input pipe open to prevent premature EOF
+          sleep infinity > /tmp/mcp/in &
+
+          # 3. Launch server and capture stderr for debugging
+          echo "🚀 Starting MCP Server..."
+          stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/server_stderr.log
+
+
+  steps:
+    - name: validate-protocol
+      image: $(params.qa_image_url)
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: mcp-pipe
+          mountPath: /tmp/mcp
+      script: |
+        #!/usr/bin/env bash
+        /usr/local/bin/mcp_protocol_audit.sh
+        AUDIT_EXIT=$?
+
+        if [ $AUDIT_EXIT -ne 0 ]; then
+          echo "::error::Audit Failed! --- SERVER STDERR LOG ---"
+          cat /tmp/mcp/server_stderr.log || echo "No stderr log found."
+          exit $AUDIT_EXIT
+        fi
+
+        echo "✅ Task Complete."
+        kill $BRIDGE_PID || true

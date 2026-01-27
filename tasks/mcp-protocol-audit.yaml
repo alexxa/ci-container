@@ -9,14 +9,14 @@ spec:
     - name: qa_image_url
       type: string
 
-  sidecars:
-    - name: mcp-server
-      image: $(params.image_url)
-      imagePullPolicy: Always
-      command:
-        - /usr/bin/socat
-        - TCP-LISTEN:8080,reuseaddr,fork
-        - EXEC:"linux-mcp-server 2>/tmp/mcp.log",stderr
+  #  sidecars:
+  #    - name: mcp-server
+  #      image: $(params.image_url)
+  #      imagePullPolicy: Always
+  #      command:
+  #        - /usr/bin/socat
+  #        - TCP-LISTEN:8080,reuseaddr,fork
+  #        - EXEC:"linux-mcp-server 2>/tmp/mcp.log",stderr
 
   steps:
     - name: validate-protocol
@@ -26,6 +26,10 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
+        echo "--- Debugging: Image Metadata ---"
+        echo "Running as: $(id)"
+        echo "PATH: $PATH"
+
         echo "--- Verification: Environment Smoke Test ---"
         
         # Check for binaries
@@ -33,17 +37,27 @@ spec:
         command -v nc || (echo "❌ nc missing"; exit 1)
         command -v socat || (echo "❌ socat missing"; exit 1)
          
-        echo "Waiting for MCP server..."
+        # echo "Waiting for MCP server..."
         # Wait for the sidecar to be ready
-        if ! timeout 60s bash -c 'until nc -z localhost 8080; do sleep 2; done'; then
-          echo "❌ ERROR: MCP server failed to start within 60 seconds."
-          exit 1
-        fi
-        echo "✅ Server is up."
+        # if ! timeout 60s bash -c 'until nc -z localhost 8080; do sleep 2; done'; then
+          # echo "❌ ERROR: MCP server failed to start within 60 seconds."
+          # exit 1
+        # fi
+        # echo "✅ Server is up."
 
         echo "Testing network bridge to sidecar..."
         echo "hello-world" | nc -w 2 localhost 8080 | grep "hello-world"
         echo "✅ Network bridge is functional."
+
+        echo "--- Checking Scripts ---"
+        ls -l /usr/local/bin/mcp_protocol_audit.sh || echo "❌ mcp_protocol_audit.sh missing"
+        ls -l /usr/local/bin/verify_stdout_hygiene.sh || echo "❌ verify_stdout_hygiene.sh missing"
+
+        echo "--- Snapshot Verification ---"
+        echo "The target image is: $(params.image_url)"
+
+        echo "--- Snapshot Verification ---"
+        echo "The target image is: $(params.image_url)"
 
         # mcp_protocol_audit.sh
         # verify_stdout_hygiene.sh

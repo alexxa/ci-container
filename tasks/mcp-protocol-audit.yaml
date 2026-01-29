@@ -24,9 +24,11 @@ spec:
       command: ["/bin/bash", "-c"]
       args:
         - |
-          mkfifo /tmp/mcp/in
-          # Server reads from 'in' pipe and writes to 'out' file
-          linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+          mkfifo /tmp/mcp/in /tmp/mcp/out
+          # Keep the pipe open even if the bridge disconnects
+          while true; do
+            linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+          done
 
   steps:
     - name: validate-protocol
@@ -45,8 +47,10 @@ spec:
         until [ -p /tmp/mcp/in ]; do sleep 1; done
 
         # Start socat bridge in background
-        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "{"' &
+        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "{"' &
         #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
+        # We escape the { so socat doesn't try to parse it as a group
+        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "\{"' &
         BRIDGE_PID=$!
 
         echo "--- Phase 2: Connectivity Check ---"

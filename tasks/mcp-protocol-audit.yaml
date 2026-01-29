@@ -27,7 +27,9 @@ spec:
           mkfifo /tmp/mcp/in /tmp/mcp/out
           # Keep the pipe open even if the bridge disconnects
           while true; do
-            linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+            #linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+            # Use stdbuf to force immediate output
+            stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
           done
 
   steps:
@@ -50,7 +52,9 @@ spec:
         #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "{"' &
         #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
         # We escape the { so socat doesn't try to parse it as a group
-        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "\{"' &
+        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "\{"' &
+        # Use 'cat' for both directions to minimize buffering lag
+        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | cat /tmp/mcp/out' &
         BRIDGE_PID=$!
 
         echo "--- Phase 2: Connectivity Check ---"

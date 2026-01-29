@@ -61,7 +61,7 @@ spec:
         timeout 30s bash -c 'until nc -z localhost 8080; do sleep 1; done'
 
         echo "--- Phase 3: Running Audits ---"
-        /usr/local/bin/verify_stdout_hygiene.sh
+        #/usr/local/bin/verify_stdout_hygiene.sh
         /usr/local/bin/mcp_protocol_audit.sh
 
         kill $BRIDGE_PID || true

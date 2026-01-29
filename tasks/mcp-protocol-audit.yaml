@@ -16,8 +16,8 @@ spec:
       command:
         - /usr/bin/socat
         - TCP-LISTEN:8080,reuseaddr,fork
-        # - EXEC:"linux-mcp-server 2>/tmp/mcp.log",stderr
-        - EXEC:/bin/cat
+        - EXEC:"/usr/local/bin/linux-mcp-server 2>/tmp/mcp.log",stderr
+        #- EXEC:/bin/cat
 
   steps:
     - name: validate-protocol
@@ -29,20 +29,27 @@ spec:
 
         echo "--- Verification: Connectivity Test ---"
 
-        # Wait for the sidecar bridge to open
-        timeout 30s bash -c 'until nc -z localhost 8080; do sleep 1; done'
+        # Try to connect with a 1-second timeout
+        MAX_RETRIES=20
+        COUNT=0
+        until (echo > /dev/tcp/localhost/8080) >/dev/null 2>&1 || [ $COUNT -eq $MAX_RETRIES ]; do
+          echo "Waiting for bridge (Attempt $((COUNT + 1))/$MAX_RETRIES)..."
+          sleep 2
+          COUNT=$((COUNT + 1))
+        done
 
-        echo "Testing network bridge to sidecar..."
-        # This sends 'ping', and the sidecar EXEC:/bin/cat should send it right back
-        ECHO_RES=$(echo "ping" | nc -w 2 localhost 8080)
-
-        if [ "$ECHO_RES" == "ping" ]; then
-          echo "✅ Network bridge is functional (Sidecar echoed back)."
-        else
-          echo "❌ Network bridge failed. Received: $ECHO_RES"
+        if [ $COUNT -eq $MAX_RETRIES ]; then
+          echo "❌ ERROR: Port 8080 never opened."
+          echo "--- Server Startup Logs ---"
+          # Sidecars share the same /tmp if configured, or we can use common volumes.
+          # For now, let's just check if the process is even visible.
+          ps aux | grep mcp || echo "Server process not found in process table."
           exit 1
         fi
 
-        echo "--- Checking Scripts ---"
-        ls -l /usr/local/bin/mcp_protocol_audit.sh
-        ls -l /usr/local/bin/verify_stdout_hygiene.sh
+        echo "Testing network bridge to sidecar..."
+        # Use a hard timeout for the actual data exchange
+        ECHO_RES=$(timeout 5s bash -c "echo 'ping' | nc localhost 8080") || {
+          echo "❌ ERROR: Sidecar did not respond within 5 seconds."
+          exit 1
+        }

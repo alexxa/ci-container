@@ -51,6 +51,7 @@ spec:
 
     - name: mcp-protocol-audit
       runAfter: [extract-server-image]
+      timeout: "0h10m0s"
       params:
         - name: qa_image_url
           value: "$(params.ci_image)"

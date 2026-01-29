@@ -16,8 +16,9 @@ spec:
       command:
         - /usr/bin/socat
         - TCP-LISTEN:8080,reuseaddr,fork
-        - EXEC:"/usr/local/bin/linux-mcp-server 2>/tmp/mcp.log",stderr
+        #- EXEC:"/usr/local/bin/linux-mcp-server 2>/tmp/mcp.log",stderr
         #- EXEC:/bin/cat
+        - EXEC:linux-mcp-server
 
   steps:
     - name: validate-protocol
@@ -28,6 +29,9 @@ spec:
         set -euo pipefail
 
         echo "--- Verification: Connectivity Test ---"
+
+        echo "--- Local Network Check ---"
+        ss -tulpn || netstat -tulpen || echo "Networking tools missing"
 
         # Try to connect with a 1-second timeout
         MAX_RETRIES=20

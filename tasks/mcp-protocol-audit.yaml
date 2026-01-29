@@ -9,21 +9,6 @@ spec:
     - name: qa_image_url
       type: string
 
-  sidecars:
-    - name: mcp-server
-      image: $(params.image_url)
-      imagePullPolicy: Always
-      # Use a shell to background both the server and the bridge
-      command: ["/bin/bash", "-c"]
-      args:
-        - |
-          # Start the server with a named pipe for its input
-          mkfifo /tmp/mcp_in
-          tail -f /tmp/mcp_in | linux-mcp-server > /tmp/mcp_out 2>/tmp/mcp_err &
-
-          # Bridge TCP 8080 to those pipes
-          socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp_in | cat /tmp/mcp_out'
-
   steps:
     - name: validate-protocol
       image: $(params.qa_image_url)
@@ -32,32 +17,35 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
-        echo "--- Verification: Connectivity Test ---"
+        echo "--- Phase 1: Launching Server & Bridge ---"
+        # 1. Start the server in the background.
+        # We assume the binary 'linux-mcp-server' is in the PATH or we use the server image's path.
+        # Since we are in the QA image, we may need to invoke it via 'podman' or 'chroot' 
+        # but the simplest way is running it directly if the binary is present.
 
-        echo "--- Local Network Check ---"
-        ss -tulpn || netstat -tulpen || echo "Networking tools missing"
+        # If the binary is in the server image, we run the server image as the step image:
+        # For now, let's bridge stdio to TCP 8080 using the tools in this QA image.
+        socat TCP-LISTEN:8080,reuseaddr,fork EXEC:linux-mcp-server,stderr &
+        BRIDGE_PID=$!
 
-        # Try to connect with a 1-second timeout
-        MAX_RETRIES=20
-        COUNT=0
-        until (echo > /dev/tcp/localhost/8080) >/dev/null 2>&1 || [ $COUNT -eq $MAX_RETRIES ]; do
-          echo "Waiting for bridge (Attempt $((COUNT + 1))/$MAX_RETRIES)..."
+        echo "--- Phase 2: Connectivity Check ---"
+        MAX_RETRIES=15
+        for i in $(seq 1 $MAX_RETRIES); do
+          if (echo > /dev/tcp/localhost/8080) >/dev/null 2>&1; then
+            echo "✅ Server Bridge is UP"
+            break
+          fi
+          echo "Waiting for server... ($i/$MAX_RETRIES)"
           sleep 2
-          COUNT=$((COUNT + 1))
+          if [ $i -eq $MAX_RETRIES ]; then
+            echo "❌ ERROR: Server failed to bind to port 8080."
+            kill $BRIDGE_PID || true
+            exit 1
+          fi
         done
 
-        if [ $COUNT -eq $MAX_RETRIES ]; then
-          echo "❌ ERROR: Port 8080 never opened."
-          echo "--- Server Startup Logs ---"
-          # Sidecars share the same /tmp if configured, or we can use common volumes.
-          # For now, let's just check if the process is even visible.
-          ps aux | grep mcp || echo "Server process not found in process table."
-          exit 1
-        fi
+        echo "--- Phase 3: Running Audits ---"
+        /usr/local/bin/verify_stdout_hygiene.sh
+        /usr/local/bin/mcp_protocol_audit.sh
 
-        echo "Testing network bridge to sidecar..."
-        # Use a hard timeout for the actual data exchange
-        ECHO_RES=$(timeout 5s bash -c "echo 'ping' | nc localhost 8080") || {
-          echo "❌ ERROR: Sidecar did not respond within 5 seconds."
-          exit 1
-        }
+        kill $BRIDGE_PID || true

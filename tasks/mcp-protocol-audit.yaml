@@ -9,40 +9,47 @@ spec:
     - name: qa_image_url
       type: string
 
+  volumes:
+    - name: mcp-pipe
+      emptyDir: {}
+
+  sidecars:
+    - name: mcp-server
+      image: $(params.image_url)
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: mcp-pipe
+          mountPath: /tmp/mcp
+      # We use pipes so the server can run without socat
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          mkfifo /tmp/mcp/in
+          # Server reads from 'in' pipe and writes to 'out' file
+          linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+
   steps:
     - name: validate-protocol
       image: $(params.qa_image_url)
       imagePullPolicy: Always
+      volumeMounts:
+        - name: mcp-pipe
+          mountPath: /tmp/mcp
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
 
-        echo "--- Phase 1: Launching Server & Bridge ---"
-        # 1. Start the server in the background.
-        # We assume the binary 'linux-mcp-server' is in the PATH or we use the server image's path.
-        # Since we are in the QA image, we may need to invoke it via 'podman' or 'chroot' 
-        # but the simplest way is running it directly if the binary is present.
+        echo "--- Phase 1: Establishing Bridge ---"
+        # Since this image HAS socat, we bridge the files to TCP 8080
+        # We use a loop to wait for the sidecar to create the pipes
+        until [ -p /tmp/mcp/in ]; do sleep 1; done
 
-        # If the binary is in the server image, we run the server image as the step image:
-        # For now, let's bridge stdio to TCP 8080 using the tools in this QA image.
-        socat TCP-LISTEN:8080,reuseaddr,fork EXEC:linux-mcp-server,stderr &
+        # Start socat bridge in background
+        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
         BRIDGE_PID=$!
 
         echo "--- Phase 2: Connectivity Check ---"
-        MAX_RETRIES=15
-        for i in $(seq 1 $MAX_RETRIES); do
-          if (echo > /dev/tcp/localhost/8080) >/dev/null 2>&1; then
-            echo "✅ Server Bridge is UP"
-            break
-          fi
-          echo "Waiting for server... ($i/$MAX_RETRIES)"
-          sleep 2
-          if [ $i -eq $MAX_RETRIES ]; then
-            echo "❌ ERROR: Server failed to bind to port 8080."
-            kill $BRIDGE_PID || true
-            exit 1
-          fi
-        done
+        timeout 30s bash -c 'until nc -z localhost 8080; do sleep 1; done'
 
         echo "--- Phase 3: Running Audits ---"
         /usr/local/bin/verify_stdout_hygiene.sh

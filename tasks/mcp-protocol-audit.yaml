@@ -45,7 +45,8 @@ spec:
         until [ -p /tmp/mcp/in ]; do sleep 1; done
 
         # Start socat bridge in background
-        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
+        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "{"' &
+        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
         BRIDGE_PID=$!
 
         echo "--- Phase 2: Connectivity Check ---"

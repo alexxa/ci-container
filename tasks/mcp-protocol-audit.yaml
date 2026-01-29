@@ -13,12 +13,16 @@ spec:
     - name: mcp-server
       image: $(params.image_url)
       imagePullPolicy: Always
-      command:
-        - /usr/bin/socat
-        - TCP-LISTEN:8080,reuseaddr,fork
-        #- EXEC:"/usr/local/bin/linux-mcp-server 2>/tmp/mcp.log",stderr
-        #- EXEC:/bin/cat
-        - EXEC:linux-mcp-server
+      # Use a shell to background both the server and the bridge
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Start the server with a named pipe for its input
+          mkfifo /tmp/mcp_in
+          tail -f /tmp/mcp_in | linux-mcp-server > /tmp/mcp_out 2>/tmp/mcp_err &
+
+          # Bridge TCP 8080 to those pipes
+          socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp_in | cat /tmp/mcp_out'
 
   steps:
     - name: validate-protocol

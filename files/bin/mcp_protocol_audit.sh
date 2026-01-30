@@ -4,11 +4,18 @@ set -euo pipefail
 echo "--- Verification: Tool Discovery & Schema ---"
 LIST_REQ='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-RESPONSE=$(echo "$LIST_REQ" | nc -w 2 localhost 8080)
+#RESPONSE=$(echo "$LIST_REQ" | nc -w 2 localhost 8080)
+RESPONSE=$( (echo "$LIST_REQ"; sleep 2) | nc -w 5 localhost 8080 )
 # Compatible with jq 1.5 and 1.6+
 
 echo "--- Available Tools Discovery ---"
 # Extract only the names from the tools array for easy reading
+
+if [ -z "$RESPONSE" ]; then
+  echo "::error::Received empty response from server. Check sidecar stderr logs."
+  exit 1
+fi
+
 echo "$RESPONSE" | jq -r '.result.tools[].name' || echo "No tools found in response."
 
 echo "--- Full Response Debug ---"

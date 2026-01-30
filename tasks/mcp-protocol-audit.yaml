@@ -41,8 +41,7 @@ spec:
           ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
  
           # 2. Keep the input pipe open to prevent premature EOF
-          #sleep infinity > /tmp/mcp/in &
-          (echo ""; sleep infinity) > /tmp/mcp/in &
+          sleep infinity > /tmp/mcp/in &
 
           # 3. Launch server and capture stderr for debugging
           echo "🚀 Starting MCP Server..."

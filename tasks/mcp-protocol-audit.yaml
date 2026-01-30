@@ -29,7 +29,10 @@ spec:
           while true; do
             #linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
             # Use stdbuf to force immediate output
-            stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+            #stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
+            # 'tail -f' keeps the input pipe open indefinitely so the server 
+            # doesn't exit on EOF when nc disconnects
+            tail -f /tmp/mcp/in | stdbuf -i0 -o0 -e0 linux-mcp-server > /tmp/mcp/out 2>/tmp/mcp/err
           done
 
   steps:
@@ -54,6 +57,7 @@ spec:
         # We escape the { so socat doesn't try to parse it as a group
         #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "\{"' &
         # Use 'cat' for both directions to minimize buffering lag
+        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | cat /tmp/mcp/out' &
         socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | cat /tmp/mcp/out' &
         BRIDGE_PID=$!
 

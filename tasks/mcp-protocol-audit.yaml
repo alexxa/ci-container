@@ -20,6 +20,15 @@ spec:
       volumeMounts:
         - name: mcp-pipe
           mountPath: /tmp/mcp
+      env:
+        - name: SSH_USER
+          value: "mcp"
+        - name: SSH_PORT
+          value: "22"
+        - name: SSH_KEY_FILE
+          value: "/var/lib/mcp/.ssh/id_rsa"
+        - name: LINUX_MCP_LOG_LEVEL
+          value: "DEBUG" 
       command: ["/bin/bash", "-c"]
       args:
         - |

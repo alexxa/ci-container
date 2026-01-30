@@ -27,7 +27,7 @@ spec:
           # Clean up any old pipes first
           rm -f /tmp/mcp/in /tmp/mcp/out
           mkfifo /tmp/mcp/in /tmp/mcp/out
-          chmod 660 /tmp/mcp/in /tmp/mcp/out
+          chmod 666 /tmp/mcp/in /tmp/mcp/out
           # Keep the pipe open even if the bridge disconnects
           while true; do
             #linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err

@@ -20,30 +20,20 @@ spec:
       volumeMounts:
         - name: mcp-pipe
           mountPath: /tmp/mcp
-      # We use pipes so the server can run without socat
       command: ["/bin/bash", "-c"]
       args:
         - |
-          # Clean up any old pipes first
+          # 1. Setup pipes with wide permissions
           rm -f /tmp/mcp/in /tmp/mcp/out
-          mkfifo /tmp/mcp/in /tmp/mcp/out || true
+          mkfifo /tmp/mcp/in /tmp/mcp/out
           chmod 666 /tmp/mcp/in /tmp/mcp/out
-
-          # This 'sleep infinity' keeps the pipe open so the server 
-          # never sees an EOF and never shuts down prematurely
-          # sleep infinity > /tmp/mcp/in &
-
-          # Keep the pipe open even if the bridge disconnects
-          #while true; do
-            #linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
-            # Use stdbuf to force immediate output
-            #stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/err
-            # 'tail -f' keeps the input pipe open indefinitely so the server 
-            # doesn't exit on EOF when nc disconnects
-            #tail -f /tmp/mcp/in | stdbuf -i0 -o0 -e0 linux-mcp-server > /tmp/mcp/out 2>/tmp/mcp/err
-            #cat /tmp/mcp/in | stdbuf -i0 -o0 -e0 linux-mcp-server > /tmp/mcp/out 2>/tmp/mcp/err
-          # done
-          (while true; do cat /tmp/mcp/in; done) | stdbuf -i0 -o0 -e0 linux-mcp-server > /tmp/mcp/out 2>/tmp/mcp/err
+          
+          # 2. Keep the input pipe open to prevent premature EOF
+          sleep infinity > /tmp/mcp/in &
+          
+          # 3. Launch server and capture stderr for debugging
+          echo "🚀 Starting MCP Server..."
+          stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/server_stderr.log
 
   steps:
     - name: validate-protocol
@@ -54,28 +44,30 @@ spec:
           mountPath: /tmp/mcp
       script: |
         #!/usr/bin/env bash
-        set -euo pipefail
-
-        echo "--- Phase 1: Establishing Bridge ---"
-        # Since this image HAS socat, we bridge the files to TCP 8080
-        # We use a loop to wait for the sidecar to create the pipes
+        
+        echo "--- Phase 1: Establishing Snoop-Bridge ---"
+        # Wait for sidecar to create pipes
         until [ -p /tmp/mcp/in ]; do sleep 1; done
 
-        # Start socat bridge in background
-        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "{"' &
-        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out' &
-        # We escape the { so socat doesn't try to parse it as a group
-        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tail -f /tmp/mcp/out | grep --line-buffered "\{"' &
-        # Use 'cat' for both directions to minimize buffering lag
-        #socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | cat /tmp/mcp/out' &
-        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | cat /tmp/mcp/out' &
+        # SNOOP BRIDGE: 'tee' will print everything the server sends to YOUR console
+        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tee /dev/stderr | cat /tmp/mcp/out' &
         BRIDGE_PID=$!
 
         echo "--- Phase 2: Connectivity Check ---"
         timeout 30s bash -c 'until nc -z localhost 8080; do sleep 1; done'
 
         echo "--- Phase 3: Running Audits ---"
-        #/usr/local/bin/verify_stdout_hygiene.sh
+        # We use a trap to ensure we dump logs if anything fails
+        set +e
         /usr/local/bin/mcp_protocol_audit.sh
+        AUDIT_EXIT=$?
+        set -e
 
+        if [ $AUDIT_EXIT -ne 0 ]; then
+          echo "::error::Audit Failed! --- SERVER STDERR LOG ---"
+          cat /tmp/mcp/server_stderr.log || echo "No stderr log found."
+          exit $AUDIT_EXIT
+        fi
+
+        echo "✅ Task Complete."
         kill $BRIDGE_PID || true

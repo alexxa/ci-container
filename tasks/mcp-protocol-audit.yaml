@@ -29,23 +29,7 @@ spec:
           value: "/var/lib/mcp/.ssh/id_rsa"
         - name: LINUX_MCP_LOG_LEVEL
           value: "DEBUG" 
-      command: ["/bin/bash", "-c"]
-      args:
-        - |
-          # 1. Setup pipes with wide permissions
-          rm -f /tmp/mcp/in /tmp/mcp/out
-          mkfifo /tmp/mcp/in /tmp/mcp/out
-          chmod 666 /tmp/mcp/in /tmp/mcp/out
-
-          mkdir -p ~/.ssh
-          ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
- 
-          # 2. Keep the input pipe open to prevent premature EOF
-          sleep infinity > /tmp/mcp/in &
-
-          # 3. Launch server and capture stderr for debugging
-          echo "🚀 Starting MCP Server..."
-          stdbuf -i0 -o0 -e0 linux-mcp-server < /tmp/mcp/in > /tmp/mcp/out 2>/tmp/mcp/server_stderr.log
+      command: ["/usr/local/bin/mcp_server_entrypoint.sh"] 
 
   steps:
     - name: validate-protocol
@@ -56,24 +40,8 @@ spec:
           mountPath: /tmp/mcp
       script: |
         #!/usr/bin/env bash
-
-        echo "--- Phase 1: Establishing Snoop-Bridge ---"
-        # Wait for sidecar to create pipes
-        until [ -p /tmp/mcp/in ]; do sleep 1; done
-
-        # SNOOP BRIDGE: 'tee' will print everything the server sends to YOUR console
-        socat TCP-LISTEN:8080,reuseaddr,fork SYSTEM:'cat > /tmp/mcp/in | tee /dev/stderr | cat /tmp/mcp/out' &
-        BRIDGE_PID=$!
-
-        echo "--- Phase 2: Connectivity Check ---"
-        timeout 30s bash -c 'until nc -z localhost 8080; do sleep 1; done'
-
-        echo "--- Phase 3: Running Audits ---"
-        # We use a trap to ensure we dump logs if anything fails
-        set +e
         /usr/local/bin/mcp_protocol_audit.sh
         AUDIT_EXIT=$?
-        set -e
 
         if [ $AUDIT_EXIT -ne 0 ]; then
           echo "::error::Audit Failed! --- SERVER STDERR LOG ---"

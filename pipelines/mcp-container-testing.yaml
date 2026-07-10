@@ -8,6 +8,7 @@ spec:
       type: string
       description: The JSON snapshot containing the built images
       default: '{"components": [{"containerImage": "quay.io/example/fallback:latest"}]}'
+      pattern: '^[^\n\r]*$'
 
     - name: URL
       type: string
@@ -39,14 +40,16 @@ spec:
         steps:
           - name: extract
             image: quay.io/rhel_lightspeed/ci:latest
+            env:
+              - name: SNAPSHOT_DATA
+                value: $(params.SNAPSHOT)
             script: |
               #!/usr/bin/env bash
-              # Use a Here-Doc to avoid quote nesting issues
-              cat << 'EOF' | jq -r '.components[0].containerImage' | tr -d '\n' > $(results.clean_url.path)
-              $(params.SNAPSHOT)
-              EOF
+              set -euo pipefail
+              printf '%s' "$SNAPSHOT_DATA" | \
+                jq -r '.components[0].containerImage' | \
+                tr -d '\n' > $(results.clean_url.path)
 
-              # Debugging: show what we found in the logs
               echo "Extracted Image: $(cat $(results.clean_url.path))"
 
     - name: mcp-protocol-audit

@@ -23,7 +23,7 @@ spec:
     - name: ci_image
       type: string
       description: Container image used for tasks
-      default: quay.io/rhel_lightspeed/ci:latest
+      default: quay.io/igulina/ci:latest
 
   tasks:
     - name: extract-server-image
@@ -39,7 +39,7 @@ spec:
             description: The extracted quay.io URL
         steps:
           - name: extract
-            image: quay.io/rhel_lightspeed/ci:latest
+            image: quay.io/igulina/ci:latest
             env:
               - name: SNAPSHOT_DATA
                 value: $(params.SNAPSHOT)

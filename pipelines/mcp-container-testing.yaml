@@ -12,7 +12,7 @@ spec:
     - name: URL
       type: string
       description: URL of the Git repository use for fetching the tasks
-      default: https://github.com/rhel-lightspeed/ci-container
+      default: https://github.com/alexxa/ci-container
 
     - name: REVISION
       type: string

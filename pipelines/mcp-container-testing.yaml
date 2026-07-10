@@ -8,7 +8,6 @@ spec:
       type: string
       description: The JSON snapshot containing the built images
       default: '{"components": [{"containerImage": "quay.io/example/fallback:latest"}]}'
-      pattern: '^[^\n\r]*$'
 
     - name: URL
       type: string
